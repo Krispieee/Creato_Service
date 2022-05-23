@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import com.creato.Models.ChangeUserStatusModel;
 import com.creato.Models.LoginModel;
 import com.creato.Models.UserCreationModel;
 import com.creato.Models.UserModel;
@@ -43,5 +44,10 @@ public class UsersController {
 	@PostMapping("/login")
 	public ResponseEntity<?> loginUser(@RequestBody LoginModel model){
 		return userService.loginUser(model);
+	}
+	
+	@PostMapping("/acceptOrReject")
+	public ResponseEntity<?> changeUserStatus(@RequestBody ChangeUserStatusModel model){
+		return userService.changeUserStatus(model);
 	}
 }

@@ -10,16 +10,31 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Sort.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.creato.Entities.LookupEntity;
+import com.creato.Entities.NotificationEntity;
+import com.creato.Entities.PictureEntity;
+import com.creato.Entities.PictureGroupEntity;
 import com.creato.Entities.UserEntity;
+import com.creato.Models.ChangeUserStatusModel;
+import com.creato.Models.GroupCreationResponseModel;
+import com.creato.Models.GroupResponseModel;
 import com.creato.Models.LoginModel;
+import com.creato.Models.NotificationResponseModel;
+import com.creato.Models.PictureCreationModel;
+import com.creato.Models.PictureResponseModel;
+import com.creato.Models.PostCreationModel;
 import com.creato.Models.UserCreationModel;
 import com.creato.Models.UserModel;
 import com.creato.Repository.LookupRepository;
+import com.creato.Repository.NotificationRepository;
+import com.creato.Repository.PictureGroupRepository;
+import com.creato.Repository.PictureRepository;
 import com.creato.Repository.UsersRepository;
 import com.creato.Utils.JwtUtil;
 
@@ -31,10 +46,18 @@ public class UserServiceImpl implements UsersService {
 
 	@Autowired
 	LookupRepository lookupRepo;
-	
+
+	@Autowired
+	NotificationRepository notiRepo;
+
+	@Autowired
+	PictureGroupRepository pictureGroupRepo;
+
+	@Autowired
+	PictureRepository pictureRepo;
+
 	@Autowired
 	JwtUtil jwt;
-	
 
 	@Override
 	public List<UserModel> getAllUsers() {
@@ -79,9 +102,9 @@ public class UserServiceImpl implements UsersService {
 		// TODO Auto-generated method stub
 		UserEntity user = userRepo.findByUsername(model.get("value"), 0);
 		Map<String, Boolean> resp = new HashMap<String, Boolean>();
-		if(user == null) {
+		if (user == null) {
 			resp.put("valid", true);
-		}else {
+		} else {
 			resp.put("valid", false);
 		}
 		return resp;
@@ -92,21 +115,213 @@ public class UserServiceImpl implements UsersService {
 		// TODO Auto-generated method stub
 		Map<String, String> resp;
 		UserEntity userEntity = userRepo.findByCreds(model.getUsername(), model.getPassword());
-		if(userEntity != null) {
-			if(userEntity.getStatus() == 0) {
+		if (userEntity != null) {
+			if (userEntity.getStatus() == 0) {
 				resp = new HashMap<String, String>();
 				resp.put("message", "Your Request still in progress");
 				return new ResponseEntity<Map<String, String>>(resp, HttpStatus.UNAUTHORIZED);
-			}else {
+			} else if (userEntity.getStatus() == 2) {
+				resp = new HashMap<String, String>();
+				resp.put("message", "Rejected by Admin and we are closing your request");
+				userRepo.delete(userEntity);
+				return new ResponseEntity<Map<String, String>>(resp, HttpStatus.OK);
+			} else {
 				resp = new HashMap<String, String>();
 				resp.put("access-token", jwt.generateJwt(userEntity));
 				return new ResponseEntity<Map<String, String>>(resp, HttpStatus.OK);
 			}
-		}else {
+		} else {
 			resp = new HashMap<String, String>();
 			resp.put("message", "Invalid Credentials");
 			return new ResponseEntity<Map<String, String>>(resp, HttpStatus.UNAUTHORIZED);
 		}
+	}
+
+	@Override
+	public ResponseEntity<?> getNotificationCount() {
+		// TODO Auto-generated method stub
+		Map<String, Integer> resp = new HashMap<String, Integer>();
+		try {
+			List<NotificationEntity> notifications = notiRepo.getUnReadNotification();
+			resp.put("count", notifications.size());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.OK).body(resp);
+	}
+
+	@Override
+	public ResponseEntity<?> getAllNotifications() {
+		// TODO Auto-generated method stub
+		List<NotificationResponseModel> respNotifications = new ArrayList<NotificationResponseModel>();
+		List<Order> orderBys = new ArrayList<Sort.Order>();
+		orderBys.add(new Order(Sort.Direction.DESC, "isRead"));
+		orderBys.add(new Order(Sort.Direction.ASC, "performedAt"));
+		try {
+			respNotifications = notiRepo.findAll().stream().map((NotificationEntity entity) -> {
+				NotificationResponseModel notificationModel = new NotificationResponseModel();
+				BeanUtils.copyProperties(entity, notificationModel);
+				notificationModel.setPerformedAction(entity.getPerformedAction().getActionDesc());
+				notificationModel.setPerformedBy(entity.getPerformedBy().getUsername());
+				notificationModel.setActionType(entity.getPerformedAction().getActionType());
+				return notificationModel;
+			}).collect(Collectors.toList());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		return ResponseEntity.status(HttpStatus.OK).body(respNotifications);
+	}
+
+	@Override
+	public ResponseEntity<?> changeUserStatus(ChangeUserStatusModel model) {
+		// TODO Auto-generated method stub
+		Map<String, String> resp = new HashMap<String, String>();
+		try {
+			UserEntity userEntity = userRepo.findByUsername(model.getUsername(), 0);
+			if (userEntity != null) {
+				userEntity.setStatus(model.getStatus());
+				userRepo.save(userEntity);
+				notiRepo.deleteById(model.getNotificationId());
+				resp.put("message", "Action completed");
+			} else {
+				resp.put("message", "Not user found");
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.ACCEPTED).body(resp);
+	}
+
+	@Override
+	public ResponseEntity<?> createGroup(PostCreationModel model) {
+		// TODO Auto-generated method stub
+		PictureGroupEntity entity = new PictureGroupEntity();
+		GroupCreationResponseModel respModel = new GroupCreationResponseModel();
+		try {
+			UserEntity userEntity = userRepo.findByUsername(model.getUsername(), 1);
+			if(model.getId() != null && model.getId() != 0 ) entity.setId(model.getId());
+			entity.setInstaUrl(model.getInstaUrl());
+			entity.setCreatedBy(userEntity);
+			entity.setUpdatedby(userEntity);
+			entity.setStatus(1);
+			pictureGroupRepo.save(entity);
+			respModel.setId(entity.getId());
+			respModel.setInstaUrl(entity.getInstaUrl());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.CREATED).body(respModel);
+	}
+
+	@Override
+	public ResponseEntity<?> createPicture(PictureCreationModel model) {
+		// TODO Auto-generated method stub
+		PictureEntity entity = new PictureEntity();
+		PictureResponseModel respModel = new PictureResponseModel();
+		try {
+
+			UserEntity userEntity = userRepo.findByUsername(model.getCreatedBy(), 1);
+			PictureGroupEntity groupEntity = pictureGroupRepo.findById(model.getGroup()).get();
+
+			entity.setCreatedBy(userEntity);
+			entity.setUpdatedBy(userEntity);
+			entity.setGroup(groupEntity);
+			entity.setPicture(model.getPicture());
+			entity.setPictureType(model.getPictureType());
+			pictureRepo.save(entity);
+			entity.setImgUrl("picture/"+String.valueOf(entity.getId()));
+			pictureRepo.save(entity);
+			BeanUtils.copyProperties(entity, respModel);
+			
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		return ResponseEntity.status(HttpStatus.CREATED).body(respModel);
+	}
+
+	@Override
+	public ResponseEntity<?> getPictureById(Long id) {
+		// TODO Auto-generated method stub
+		PictureEntity entity = pictureRepo.findById(id).get();
+		Map<String, String> resp = new HashMap<String, String>();
+		if(entity != null) {
+			return ResponseEntity.status(HttpStatus.OK).body(entity.getPicture());
+		}
+		resp.put("message", "Invalid request");
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(resp);
+	}
+
+	@Override
+	public ResponseEntity<?> getAllImages() {
+		// TODO Auto-generated method stub
+		List<GroupResponseModel> respGroup = new ArrayList<GroupResponseModel>();
+		List<PictureGroupEntity> toBeDeleted = new ArrayList<PictureGroupEntity>();
+		try {
+			respGroup = pictureGroupRepo.findAll().stream().map((PictureGroupEntity groupEntity) -> {
+				List<PictureEntity> pictures = groupEntity.getPictures();
+				GroupResponseModel groupModel = new GroupResponseModel();
+				PictureResponseModel picModel; List<PictureResponseModel> picModels;
+				if(pictures.size() != 0) {
+					groupModel = new GroupResponseModel();
+					picModels = new ArrayList<PictureResponseModel>();
+					for(PictureEntity picEntity: pictures) {
+						picModel = new PictureResponseModel();
+						BeanUtils.copyProperties(picEntity, picModel);
+						picModels.add(picModel);
+					}
+					BeanUtils.copyProperties(groupEntity, groupModel);
+					groupModel.setPictures(picModels);
+					return groupModel;
+					
+					
+					
+				}else {
+					toBeDeleted.add(groupEntity);
+				}
+				return null;
+			}).collect(Collectors.toList());
+			toBeDeleted.stream().forEach(pictureGroupRepo::delete);
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.OK).body(respGroup);
+	}
+
+	@Override
+	public ResponseEntity<?> updatePicture(PictureCreationModel model) {
+		// TODO Auto-generated method stub
+		PictureEntity entity;
+		PictureResponseModel respModel = new PictureResponseModel();
+		try {			
+			entity = pictureRepo.getById(model.getId());
+			entity.setUpdatedBy(userRepo.findByUsername(model.getCreatedBy(), 1));
+			entity.setPictureType(model.getPictureType());
+			if(model.getPicture() != null && model.getPicture().length > 0) entity.setPicture(model.getPicture());
+			pictureRepo.save(entity);
+			BeanUtils.copyProperties(entity, respModel);
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.CREATED).body(respModel);
+	}
+
+	@Override
+	public ResponseEntity<?> updateGroup(PostCreationModel model) {
+		// TODO Auto-generated method stub
+		PictureGroupEntity entity;
+		GroupResponseModel respModel = new GroupResponseModel();
+		try {			
+			entity = pictureGroupRepo.getById(model.getId());
+			entity.setInstaUrl(model.getInstaUrl());
+			entity.setUpdatedby(userRepo.findByUsername(model.getUsername(), 1));
+			pictureGroupRepo.save(entity);
+			BeanUtils.copyProperties(entity, respModel);
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.CREATED).body(respModel);
 	}
 
 }

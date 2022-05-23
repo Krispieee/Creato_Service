@@ -23,7 +23,7 @@ public class JwtInterceptors implements HandlerInterceptor  {
 	@Autowired
     private JwtUtil jwtUtils;
 	
-	private static String array[] = { "usernameValidation", "login" };
+	private static String array[] = { "usernameValidation", "login", "users", "picture" };
 	
 	private static List<String> publicApis = Arrays.asList(array);
 

@@ -32,6 +32,7 @@ public class JwtUtil {
 		
 		//payload
 		claims.put("isAdmin", user.getIsAdmin());
+		claims.put("username", user.getUsername());
 		
 		return Jwts.builder()
                 .setClaims(claims)
