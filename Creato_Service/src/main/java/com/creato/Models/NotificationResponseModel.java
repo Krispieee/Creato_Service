@@ -11,6 +11,8 @@ public class NotificationResponseModel {
 
 	private Timestamp performedAt;
 	
+	private int isRead;
+	
 	private int actionType;
 
 	public Long getId() {
@@ -51,6 +53,14 @@ public class NotificationResponseModel {
 
 	public void setActionType(int actionType) {
 		this.actionType = actionType;
+	}
+
+	public int getIsRead() {
+		return isRead;
+	}
+
+	public void setIsRead(int isRead) {
+		this.isRead = isRead;
 	}
 
 }

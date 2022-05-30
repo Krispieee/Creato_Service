@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import com.creato.Models.ChangeUserStatusModel;
+import com.creato.Models.JoinCodeUpdationModel;
 import com.creato.Models.LoginModel;
+import com.creato.Models.UpdatePasswordModel;
 import com.creato.Models.UserCreationModel;
 import com.creato.Models.UserModel;
 import com.creato.Services.UsersService;
@@ -49,5 +51,20 @@ public class UsersController {
 	@PostMapping("/acceptOrReject")
 	public ResponseEntity<?> changeUserStatus(@RequestBody ChangeUserStatusModel model){
 		return userService.changeUserStatus(model);
+	}
+	
+	@PostMapping("/getJoinCode")
+	public ResponseEntity<?> getJoinCode(@RequestBody UserCreationModel model){
+		return userService.getJoinCode(model);
+	}
+	
+	@PostMapping("/updateJoinCode")
+	public ResponseEntity<?> updateJoinCode(@RequestBody JoinCodeUpdationModel model){
+		return userService.updateJoinCode(model);
+	}
+	
+	@PostMapping("/updatePassword")
+	public ResponseEntity<?> updatePassword(@RequestBody UpdatePasswordModel model){
+		return userService.updatePassword(model);
 	}
 }

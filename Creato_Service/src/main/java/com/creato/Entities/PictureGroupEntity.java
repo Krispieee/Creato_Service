@@ -27,7 +27,7 @@ public class PictureGroupEntity {
 	@Column(name = "insta_url")
 	public String instaUrl;
 
-	@OneToMany(fetch = FetchType.LAZY, mappedBy = "group")
+	@OneToMany(fetch = FetchType.LAZY, mappedBy = "group", orphanRemoval = true)
 	private List<PictureEntity> pictures;
 
 	@Column(name = "created_at")

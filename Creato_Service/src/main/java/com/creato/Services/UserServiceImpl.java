@@ -4,13 +4,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.data.web.SpringDataWebProperties.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Sort.Direction;
 import org.springframework.data.domain.Sort.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,11 +25,13 @@ import com.creato.Entities.UserEntity;
 import com.creato.Models.ChangeUserStatusModel;
 import com.creato.Models.GroupCreationResponseModel;
 import com.creato.Models.GroupResponseModel;
+import com.creato.Models.JoinCodeUpdationModel;
 import com.creato.Models.LoginModel;
 import com.creato.Models.NotificationResponseModel;
 import com.creato.Models.PictureCreationModel;
 import com.creato.Models.PictureResponseModel;
 import com.creato.Models.PostCreationModel;
+import com.creato.Models.UpdatePasswordModel;
 import com.creato.Models.UserCreationModel;
 import com.creato.Models.UserModel;
 import com.creato.Repository.LookupRepository;
@@ -100,7 +103,7 @@ public class UserServiceImpl implements UsersService {
 	@Override
 	public Map<String, Boolean> validateUsername(Map<String, String> model) {
 		// TODO Auto-generated method stub
-		UserEntity user = userRepo.findByUsername(model.get("value"), 0);
+		UserEntity user = userRepo.findByUsername(model.get("value"));
 		Map<String, Boolean> resp = new HashMap<String, Boolean>();
 		if (user == null) {
 			resp.put("valid", true);
@@ -258,8 +261,54 @@ public class UserServiceImpl implements UsersService {
 		// TODO Auto-generated method stub
 		List<GroupResponseModel> respGroup = new ArrayList<GroupResponseModel>();
 		List<PictureGroupEntity> toBeDeleted = new ArrayList<PictureGroupEntity>();
+		
 		try {
-			respGroup = pictureGroupRepo.findAll().stream().map((PictureGroupEntity groupEntity) -> {
+			PageRequest page = PageRequest.of(0, 6, Sort.by(Direction.DESC, "createdBy.isAdmin"));
+
+			respGroup = pictureGroupRepo.getAllImages(page).stream().map((PictureGroupEntity groupEntity) -> {
+				List<PictureEntity> pictures = groupEntity.getPictures();
+				GroupResponseModel groupModel = new GroupResponseModel();
+				PictureResponseModel picModel; List<PictureResponseModel> picModels;
+				if(pictures.size() != 0) {
+					groupModel = new GroupResponseModel();
+					picModels = new ArrayList<PictureResponseModel>();
+					for(PictureEntity picEntity: pictures) {
+						picModel = new PictureResponseModel();
+						BeanUtils.copyProperties(picEntity, picModel);
+						picModels.add(picModel);
+					}
+					BeanUtils.copyProperties(groupEntity, groupModel);
+					groupModel.setPictures(picModels);
+					return groupModel;
+					
+					
+					
+				}else {
+					toBeDeleted.add(groupEntity);
+				}
+				return null;
+			}).collect(Collectors.toList());
+			toBeDeleted.stream().forEach(pictureGroupRepo::delete);
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.OK).body(respGroup);
+	}
+	
+	@Override
+	public ResponseEntity<?> getAllImages(String username) {
+		// TODO Auto-generated method stub
+		List<GroupResponseModel> respGroup = new ArrayList<GroupResponseModel>();
+		List<PictureGroupEntity> toBeDeleted = new ArrayList<PictureGroupEntity>();
+		List<PictureGroupEntity> groups = new ArrayList<PictureGroupEntity>();
+		try {
+			UserEntity user = userRepo.findByUsername(username, 1);
+			if(user.getIsAdmin() == 1) {
+				groups = pictureGroupRepo.findAll();
+			}else {
+				groups = pictureGroupRepo.getPictureByUsername(user);
+			}
+			respGroup = groups.stream().map((PictureGroupEntity groupEntity) -> {
 				List<PictureEntity> pictures = groupEntity.getPictures();
 				GroupResponseModel groupModel = new GroupResponseModel();
 				PictureResponseModel picModel; List<PictureResponseModel> picModels;
@@ -323,5 +372,94 @@ public class UserServiceImpl implements UsersService {
 		}
 		return ResponseEntity.status(HttpStatus.CREATED).body(respModel);
 	}
+
+	@Override
+	public ResponseEntity<?> deleteGroup(Long id) {
+		// TODO Auto-generated method stub
+		PictureGroupEntity group = new PictureGroupEntity();
+		Map<String, String> resp = new HashMap<String, String>();
+		try {
+			group = pictureGroupRepo.findById(id).get();
+			pictureGroupRepo.delete(group);
+			resp.put("message", "success");
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.OK).body(resp);
+	}
+
+	@Override
+	public ResponseEntity<?> markNotificationAsRead(NotificationResponseModel model) {
+		// TODO Auto-generated method stub
+		Map<String, String> respModel = new HashMap<String, String>();
+		try {
+			NotificationEntity entity = notiRepo.findById(model.getId()).get();
+			if(model.getPerformedAction().equals("read")) {
+				entity.setIsRead(1);
+				notiRepo.save(entity);
+				respModel.put("message", "Marked as read");
+			}else {
+				notiRepo.delete(entity);
+				respModel.put("message", "Deleted");
+			}
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.OK).body(respModel);
+	}
+
+	@Override
+	public ResponseEntity<?> getJoinCode(UserCreationModel model) {
+		// TODO Auto-generated method stub
+		UserEntity userEntity = userRepo.findByCreds(model.getUsername(), model.getPassword());
+		Map<String, String> respModel = new HashMap<String, String>();
+		if(userEntity != null) {			
+			LookupEntity lookup = lookupRepo.findLookupData("JOIN_CODE");
+			respModel.put("joinCode", lookup.getLookupValue());
+			return ResponseEntity.status(HttpStatus.ACCEPTED).body(respModel);
+		}else {
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(null);
+		}
+	}
+
+	@Override
+	public ResponseEntity<?> updateJoinCode(JoinCodeUpdationModel model) {
+		// TODO Auto-generated method stub
+		Map<String, String> respModel = new HashMap<String, String>();
+		try {
+			LookupEntity lookup = lookupRepo.findLookupData("JOIN_CODE");
+			lookup.setLookupValue(model.getJoinCode());
+			lookupRepo.save(lookup);
+			respModel.put("joinCode", lookup.getLookupValue());
+			return ResponseEntity.status(HttpStatus.ACCEPTED).body(respModel);
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(null);
+	}
+
+	@Override
+	public ResponseEntity<?> updatePassword(UpdatePasswordModel model) {
+		// TODO Auto-generated method stub
+		Map<String, String> respModel = new HashMap<String, String>();
+		try{
+			UserEntity userEntity = userRepo.findByCreds(model.getUsername(), model.getOldPassword());
+			if(userEntity != null) {
+				userEntity.setPassword(model.getNewPassword());
+				userRepo.save(userEntity);
+				respModel.put("message", "updated");
+				return ResponseEntity.status(HttpStatus.ACCEPTED).body(respModel);
+				
+			}else {
+				respModel.put("message", "Old Password incorrect");
+				return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(respModel);
+			}
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(respModel);
+	}
+
+	
 
 }
